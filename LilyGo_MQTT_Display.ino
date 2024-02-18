@@ -186,7 +186,7 @@ void setup() {
   // Default screen
   dispScreen = CLOCK;
 
-  initgame();
+  initPong();
 }
 
 // Setup for core1
@@ -241,6 +241,100 @@ void loop() {
 
 // Core 1 loop :
 void loop1() {
+}
+
+
+
+//**********************************************
+// WIFI CONFIG Routines
+//**********************************************
+
+void configAP() {
+
+  WiFiServer server(80);
+
+  WiFi.beginAP(); // starts the default AP (factory default or setup as persistent)
+
+  char ssid[33];
+  WiFi.apSSID(ssid);
+  Serial.print("Connect your computer to the WiFi network ");
+  Serial.print(ssid);
+  Serial.println();
+  IPAddress ip = WiFi.apIP();
+  Serial.print("and enter http://");
+  Serial.print(ip);
+  Serial.println(" in a Web browser");
+
+  server.begin();
+
+  while (true) {
+
+    WiFiClient client = server.available();
+    if (client && client.available()) { // if !available yet, we return to this client in next loop
+      char line[64];
+      int l = client.readBytesUntil('\n', line, sizeof(line));
+      line[l] = 0;
+      client.find((char*) "\r\n\r\n");
+
+      if (strncmp_P(line, PSTR("POST"), strlen("POST")) == 0) {
+        l = client.readBytes(line, sizeof(line));
+        line[l] = 0;
+
+        // parse the parameters sent by the html form
+        const char* delims = "=&";
+        strtok(line, delims);
+        const char* ssid = strtok(NULL, delims);
+        strtok(NULL, delims);
+        const char* pass = strtok(NULL, delims);
+
+        // send a response before attemting to connect to the WiFi network
+        // because it will reset the SoftAP and disconnect the client station
+        client.println(F("HTTP/1.1 200 OK"));
+        client.println(F("Connection: close"));
+        client.println(F("Refresh: 10"));
+        client.println();
+        client.println(F("<html><body><h3>Configuration AP</h3><br>connecting...</body></html>"));
+        client.flush();
+        delay(1000);
+        client.stop();
+
+        Serial.println();
+        Serial.print("Attempting to connect to WPA SSID: ");
+        Serial.println(ssid);
+        // WiFi.setPersistent(); // to make a successful connection persistent
+        WiFi.begin(ssid, pass);
+
+        // configuration continues with the next request
+
+      } else {
+
+        client.println(F("HTTP/1.1 200 OK"));
+        client.println(F("Connection: close"));
+        client.println();
+        client.println(F("<html><body><h3>Configuration AP</h3><br>"));
+
+        int status = WiFi.status();
+        if (status == WL_CONNECTED) {
+          client.println(F("Connection successful. Ending AP."));
+        } else {
+          client.println(F("<form action='/' method='POST'>WiFi connection failed. Enter valid parameters, please.<br><br>"));
+          client.println(F("SSID:<br><input type='text' name='i'><br>"));
+          client.println(F("Password:<br><input type='password' name='p'><br><br>"));
+          client.println(F("<input type='submit' value='Submit'></form>"));
+        }
+        client.println(F("</body></html>"));
+        client.stop();
+
+        if (status == WL_CONNECTED) {
+          delay(1000); // to let the AT firmware finish the communication
+          Serial.println("Connection successful. Ending AP.");
+          server.end();
+          WiFi.endAP(true);
+          return;
+        }
+      }
+    }
+  }
 }
 
 //**********************************************
@@ -437,7 +531,7 @@ void MQTT_Broker_reconnect() {
 // PONG Screen saver
 //**********************************************
 
-void initgame() {
+void initPong() {
   lpaddle_y = random(0, h - paddle_h);
   rpaddle_y = random(0, h - paddle_h);
 
@@ -546,3 +640,4 @@ void calc_target_y() {
     target_y = h - (y % h);
   }
 }
+
